@@ -15,3 +15,10 @@ expression : term ((+|-) term)*
 term       : power ((*|/) power)*
 power      : factor (^ power)
 factor     : NUMBER | VAR | ( expression ) | - factor
+
+## How to Run
+1. Open your terminal
+2. Run: gcc main.c -o parser -lm
+3. Run: ./parser (or parser.exe on Windows)
+
+
