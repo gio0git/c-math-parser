@@ -15,6 +15,7 @@ expression : term ((+|-) term)*
 term       : power ((*|/) power)*
 power      : factor (^ power)
 factor     : NUMBER | VAR | ( expression ) | - factor
+```
 
 ## How to Run
 1. Open your terminal
