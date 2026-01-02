@@ -37,14 +37,14 @@ Lexer* lexer_init(char *string) {
 
 Token tokenizer(Lexer *lexer) {
     
-    if (lexer->text[lexer->pos] == '\0') {
-        return (Token) { T_END, 0};
-    }
-
     while (lexer->text[lexer->pos] == ' ') {
         lexer->pos++;
     }
 
+    if (lexer->text[lexer->pos] == '\0') {
+        return (Token) { T_END, 0};
+    }
+    
     char c = lexer->text[lexer->pos];
 
     if ( (c >= '0' && c <= '9') || c == '.') {
@@ -181,7 +181,6 @@ ASTnode* factor(Lexer *l) {
 
     printf("Syntax Error, unexpected token %d\n", currentToken.type);
     exit(1);
-    return NULL; 
 }
 
 ASTnode* power(Lexer *l) {
