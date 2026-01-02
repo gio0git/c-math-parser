@@ -10,16 +10,18 @@ A lightweight mathematical expression evaluator that builds an Abstract Syntax T
 
 ## Grammar Rules
 The parser follows these EBNF rules:
-```ebnf
+```text
 expression : term ((+|-) term)*
 term       : power ((*|/) power)*
 power      : factor (^ power)
 factor     : NUMBER | VAR | ( expression ) | - factor
-```
+``` 
 
 ## How to Run
+``` markdown
 1. Open your terminal
 2. Run: gcc main.c -o parser -lm
 3. Run: ./parser (or parser.exe on Windows)
+```
 
 
