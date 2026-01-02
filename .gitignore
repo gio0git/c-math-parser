@@ -1,0 +1,7 @@
+# Ignore the compiled executables
+parser
+parser.exe
+a.out
+
+# Ignore object files
+*.o
