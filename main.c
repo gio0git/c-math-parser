@@ -3,270 +3,282 @@
 #include <string.h>
 #include <math.h>
 
-typedef enum tokenType {
+// Structs and Enums
+
+typedef enum {
     T_NUMBER,
-    T_VAR,
-    T_PLUS,
-    T_MINUS,
-    T_MUL,
-    T_DIV,
-    T_EXP,
+    T_VARIABLE,
     T_LPAR,
     T_RPAR,
+    T_EXP,
+    T_MUL,
+    T_DIV,
+    T_PLUS,
+    T_MINUS,
     T_END
-} tokenType;
+ } tokenType;
 
 typedef struct Token {
     tokenType type;
     double value;
+    char varName;
 } Token;
 
-Token currentToken; 
+typedef struct Parser {
+    Token currentToken;
+    struct 
+    {
+        char *string;
+        int pos;
+    } lexer;
+} Parser;
 
-typedef struct Lexer {
-    char *text;
-    int pos;
-} Lexer;
-
-Lexer* lexer_init(char *string) {
-    Lexer *l = malloc(sizeof(Lexer));
-    l->text = string;
-    l->pos = 0;
-    return l;
-}
-
-Token tokenizer(Lexer *lexer) {
-    
-    while (lexer->text[lexer->pos] == ' ') {
-        lexer->pos++;
-    }
-
-    if (lexer->text[lexer->pos] == '\0') {
-        return (Token) { T_END, 0};
-    }
-    
-    char c = lexer->text[lexer->pos];
-
-    if ( (c >= '0' && c <= '9') || c == '.') {
-        char *endPtr;
-        
-        double val = strtod(&lexer->text[lexer->pos], &endPtr); // strtod reads the number and 'endPtr' tells us where the number ended
-    
-        
-        lexer->pos += (endPtr - &lexer->text[lexer->pos]); // We move the lexer's position forward by however many characters strtod read
-    
-        return (Token){T_NUMBER, val};
-    }
-
-    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-        lexer->pos++;
-        return (Token){T_VAR, (double)c};   // cast ascii to double
-    }
-
-    lexer->pos++;
-    switch (c) {
-        case '+': return (Token){T_PLUS, 0};
-        case '-': return (Token){T_MINUS, 0};
-        case '*': return (Token){T_MUL, 0};
-        case '/': return (Token){T_DIV, 0};
-        case '^': return (Token){T_EXP, 0};
-        case '(': return (Token){T_LPAR, 0};
-        case ')': return (Token){T_RPAR, 0};
-        default: 
-            printf("Unexpected character: %c\n", c);
-            exit(1);
-    }
-} 
-
-
-void eat(Lexer *l, tokenType expected) {
-
-    if (currentToken.type == expected) {
-        currentToken = tokenizer(l);
-    }
-    else {
-        printf("Syntax Error, expected %d but got %d\n", expected, currentToken.type);
-        exit(1);
-    }
-
-}
-
-typedef enum ASTnodeType {
+typedef enum {
     N_NUMBER,
     N_VAR,
     N_OP
-} ASTnodeType;
-
-/* The following parser implements Recursive Descent based on the following grammar:
- * expression : term ((+|-) term)* read as -> expression is term  (plus or minus term), zero or more times
- * term       : power ((*|/) power)*
- * power      : factor (^ power)
- * factor     : NUMBER | VAR | ( expression ) | - factor
- */
+} nodeType;
 
 typedef struct ASTnode {
-    ASTnodeType type;
+    nodeType type;
     union {
-        double number;
-        char var_name; // X or Y or ..
-        struct {
-            char c;
-            struct ASTnode *left;
-            struct ASTnode *right;
-        } op;
+        double value;
+        char op;
     } data;
+    struct ASTnode *left;
+    struct ASTnode *right;
+} ASTnode;
 
-} ASTnode ;
+// Function prototypes 
 
-// Forward declarations
+Parser* parser_init(char *string);
+Token tokenizer(Parser *p);
+void eat(Parser *p, tokenType expected);
+ASTnode* create_number_node(double number);
+ASTnode* create_op_node(char op, ASTnode* l, ASTnode* r);
+ASTnode* factor(Parser *p);
+ASTnode* term(Parser *p);
+ASTnode* expression(Parser *p);
+double evaluate_tree(ASTnode* n, double x_val);
+void free_tree(ASTnode *n);
 
-ASTnode* expression(Lexer *l);
-ASTnode* term(Lexer *l);
-ASTnode* power(Lexer *l);
-ASTnode* factor(Lexer *l);
+// Parser initialization
 
-// Constructors
-// Program is small enough to trust malloc and not NULL check
+Parser* parser_init(char *string) {
+    Parser *parser = malloc(sizeof(Parser));
+    if (!parser) { return 0; }
+    parser->lexer.string = string;
+    parser->lexer.pos = 0;
+    parser->currentToken = tokenizer(parser);
+    return parser;
+}
+
+// Lexical analysis
+
+Token tokenizer(Parser *p) {
+    while (p->lexer.string[p->lexer.pos] == ' ') {
+        p->lexer.pos++;
+    }
+
+    if (p->lexer.string[p->lexer.pos] == '\0') {
+        return (Token) {T_END, 0};
+    }
+
+    char c = p->lexer.string[p->lexer.pos];
+
+    if (c == 'x') {
+        p->lexer.pos++;
+        return (Token) {T_VARIABLE, 0, c}; // make default x_val = 0;
+    }
+
+    // Handle numbers (including multi-digits and decimals)
+    if (c >= '0' && c <= '9' || c == '.') {
+        char *startPtr = &p->lexer.string[p->lexer.pos];
+        char *endPtr;
+        double val = strtod(startPtr, &endPtr);
+        // Move the position forward by the number of characters strtod read
+        p->lexer.pos += (endPtr - startPtr);
+        return (Token) {T_NUMBER, val};
+    }
+
+    p->lexer.pos++;
+
+    // Handle operators and parentheses
+    switch (c) {
+        case '(': return (Token) {T_LPAR, 0};
+        case ')': return (Token) {T_RPAR, 0};
+        case '*': return (Token) {T_MUL, 0};
+        case '/': return (Token) {T_DIV, 0};
+        case '^': return (Token) {T_EXP, 0};
+        case '+': return (Token) {T_PLUS, 0};
+        case '-': return (Token) {T_MINUS, 0};
+        default:
+            printf("Syntax error, unknown character %c\n", c);
+            exit(1);
+    }
+
+
+}
+
+void eat(Parser *p, tokenType expected) {
+    if (p->currentToken.type == expected) {
+        p->currentToken = tokenizer(p);
+    }
+    else {
+        printf("Unexpected token!");
+        exit(1);
+    }
+}
+
+// ASTnode constructors
 
 ASTnode* create_number_node(double number) {
-    ASTnode *node = malloc(sizeof(ASTnode));
-    node->type = N_NUMBER;
-    node->data.number = number;
-    return node;
+    ASTnode* n = malloc(sizeof(ASTnode));
+    if (!n) return NULL;
+    n->type = N_NUMBER;
+    n->data.value = number;
+    n->left = NULL;
+    n->right = NULL;
+    return n;
 }
 
 ASTnode* create_var_node(char var_name) {
-    ASTnode *node = malloc(sizeof(ASTnode));
-    node->type = N_VAR;
-    node->data.var_name = var_name;
-    return node;
+    ASTnode *n = malloc(sizeof(ASTnode));
+    if (!n) return NULL;
+    n->type = N_VAR;
+    n->data.op = var_name;
+    n->left = NULL;
+    n->right = NULL;
+    return n;
 }
 
-ASTnode* create_op_node(char operator, ASTnode *left, ASTnode *right) {
-    ASTnode *node = malloc(sizeof(ASTnode));
-    node->type = N_OP;
-    node->data.op.c = operator;
-    node->data.op.left = left;
-    node->data.op.right = right;
-    return node;
+ASTnode* create_op_node(char op, ASTnode* l, ASTnode* r) {
+    ASTnode* n = malloc(sizeof(ASTnode));
+    if (!n) return NULL;
+    n->type = N_OP;
+    n->data.op = op;
+    n->left = l;
+    n->right = r;
+    return n;
 }
 
-// Grammar Rules
 
-ASTnode* factor(Lexer *l) {
-    if (currentToken.type == T_NUMBER) {
-        double val = currentToken.value;
-        eat(l, T_NUMBER);
+
+ASTnode *factor(Parser *p) {
+    if (p->currentToken.type == T_NUMBER) {
+        double val = p->currentToken.value;
+        eat(p, T_NUMBER);
         return create_number_node(val);
     }
 
-    if (currentToken.type ==  T_VAR) {
-        char name = (char) currentToken.value;
-        eat(l, T_VAR);
+    else if (p->currentToken.type == T_VARIABLE) {
+        char name = p->currentToken.varName; // store name  
+        eat(p, T_VARIABLE); // move to next token
         return create_var_node(name);
+    }   
+
+    else if (p->currentToken.type == T_LPAR) {
+        eat(p, T_LPAR);
+        ASTnode *node = expression(p); // Get subtree
+        eat(p, T_RPAR);
+        return node;
+    }
+    // Check for unary minus
+    else if (p->currentToken.type == T_MINUS) {
+        eat(p, T_MINUS);
+        return create_op_node('-', NULL, factor(p));
     }
 
-    else if (currentToken.type == T_LPAR) {
-        eat(l, T_LPAR);
-        ASTnode *node = expression(l); 
-        eat(l, T_RPAR);
-        return node;     
+    else {
+        printf("Unexpected token in factor()");
+        exit(1);
     }
-
-    else if (currentToken.type == T_MINUS) {
-        eat(l, T_MINUS);
-        // Unary minus: treat -x as 0 - x
-        return create_op_node('-', create_number_node(0), factor(l));
-    }
-
-    printf("Syntax Error, unexpected token %d\n", currentToken.type);
-    exit(1);
 }
 
-ASTnode* power(Lexer *l) {
-    ASTnode* node = factor(l);
-    while (currentToken.type == T_EXP) {
-        eat(l, T_EXP);
-        // Right associative recursion
-        node = create_op_node('^', node, power(l));
+ASTnode* power(Parser *p) {
+    ASTnode *node = factor(p);
+    while (p->currentToken.type == T_EXP) {
+        eat(p, T_EXP);
+        node = create_op_node('^', node, power(p));
     }
     return node;
 }
 
-ASTnode* term(Lexer *l) {
-    ASTnode *node = power(l); 
-    while (currentToken.type == T_MUL || currentToken.type == T_DIV) {
-        char op = (currentToken.type == T_MUL) ? '*' : '/';
-        eat(l, currentToken.type);
-        node = create_op_node(op, node, power(l));
+ASTnode* term(Parser *p) {
+    ASTnode *node = power(p); // number node before op
+    while (p->currentToken.type == T_MUL || p->currentToken.type == T_DIV) {
+        char op = (p->currentToken.type == T_MUL) ? '*' : '/';
+        eat(p, p->currentToken.type); // Move to the next token
+        node = create_op_node(op, node, power(p)); // power(p) is number node after op 
     }
     return node;
 }
 
-ASTnode* expression(Lexer *l) {
-    ASTnode *node = term(l);
-    while (currentToken.type == T_PLUS || currentToken.type == T_MINUS) {
-        char op = (currentToken.type == T_PLUS) ? '+' : '-';
-        eat(l, currentToken.type);
-        node = create_op_node(op, node, term(l));
+ASTnode* expression(Parser *p) {
+    ASTnode *node = term(p);
+    while (p->currentToken.type == T_PLUS || p->currentToken.type == T_MINUS) {
+        char op = (p->currentToken.type == T_PLUS) ? '+' : '-';
+        eat(p, p->currentToken.type);
+        node = create_op_node(op, node, term(p));
     }
     return node;
+
 }
+// Evaluate a tree by receiving the root node
+double evaluate_tree(ASTnode* n, double x_val) {
+    if (n == NULL) return 0; 
 
-double evaluate(ASTnode* node, double x_var) {
-    if (node->type == N_NUMBER) {
-        return node->data.number;
-    }
-
-    if (node->type == N_VAR) {
-        if (node->data.var_name == 'x') return x_var;
+    else if (n->type == N_NUMBER) return n->data.value;
+    
+    else if (n->type == N_VAR) {
+        if(n->data.op == 'x') {return x_val;}
         return 0.0;
     }
 
-    double left = evaluate(node->data.op.left, x_var);
-    double right = evaluate(node->data.op.right, x_var);
+    // Recursive calls happen here
+    double left = evaluate_tree(n->left, x_val);
+    double right = evaluate_tree(n->right, x_val);
 
-    if (node->data.op.c == '+') return left + right;
-    else if (node->data.op.c == '-') return left - right;
-    else if (node->data.op.c == '*') return left * right;
-    else if (node->data.op.c == '/') return left / right;
-    else if (node->data.op.c == '^') return pow(left, right);
-
-    return 0.0;
-}
-
-void free_tree(ASTnode* node) {
-    if (node == NULL) return;
-    if (node->type == N_OP) {
-        free_tree(node->data.op.left);
-        free_tree(node->data.op.right);
+    switch(n->data.op) {
+        case '+': return left + right;
+        case '-': return left - right;
+        case '*': return left * right;
+        case '/':
+            if(right == 0) { printf("Error! Division by zero!\n"); exit(1); }
+            return left / right;
+        case '^': return pow(left, right);
+        default: return 0;
     }
-    free(node);
+}
+
+// Memory management
+
+void free_tree(ASTnode* n) {
+    if (!n) return;
+    free_tree(n->left);
+    free_tree(n->right);
+    free(n);
 }
 
 
-
-
-
-int main () {
-    char input[256];
+int main() {
+    char toCalc[256];
     double x_val;
-
     printf("Enter a function of x: ");
-    fgets(input, sizeof(input), stdin);
-    input[strcspn(input, "\n")] = 0; // Remove newline
+    fgets(toCalc, sizeof(toCalc), stdin);
+    toCalc[strcspn(toCalc, "\n")] = 0; // Remove newline
 
     printf("Enter value for x: ");
     scanf("%lf", &x_val);
 
-    Lexer* l = lexer_init(input);
-    currentToken = tokenizer(l);
-    ASTnode* tree = expression(l);
+    // Initialize parser and build AST
+    Parser* p = parser_init(toCalc);
+    ASTnode* tree = expression(p);
 
-    double result = evaluate(tree, x_val);
+    double result = evaluate_tree(tree, x_val);
     printf("Result: %.2f\n", result);
 
     free_tree(tree);
-    free(l);
+    free(p);
     return 0;
 }
